@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MoodFlow Pro - Vanilla</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background-color: #F5F7FA; color: #2D3436; }
+        .line-through { text-decoration: line-through; }
+        .grayscale { filter: grayscale(100%); }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="h-[60px] bg-white border-b border-[#DFE6E9] flex items-center justify-between px-6 shrink-0 z-10">
+        <div class="text-xl font-extrabold text-[#4A90E2] tracking-tighter">MOODFLOW PRO</div>
+        <div class="flex items-center gap-4 text-[13px] text-[#636E72]">
+            <div class="flex items-center gap-2">
+                <span>儲存模式:</span>
+                <span class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded text-[11px] font-mono">LOCAL STORAGE</span>
+            </div>
+            <div class="h-4 w-[1px] bg-[#DFE6E9]"></div>
+            <span id="user-email">1164015-4</span>
+        </div>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden">
+        <!-- Sidebar - Input Form -->
+        <aside class="w-[320px] bg-white border-r border-[#DFE6E9] p-6 flex flex-col gap-6 overflow-y-auto">
+            <div id="limit-warning" class="hidden bg-amber-50 border border-amber-200 rounded-lg p-3 text-[12px] text-amber-700 leading-relaxed">
+                ✨ <b>今天的心情已安放。</b><br/>
+                每人每天限記錄一次，讓我們期待明天的晨曦與心情。
+            </div>
+
+            <section id="mood-section">
+                <span class="text-[12px] uppercase tracking-widest text-[#636E72] font-bold mb-4 block">1. 選擇你的心情</span>
+                <div class="grid grid-cols-3 gap-2" id="mood-grid">
+                    <!-- Mood buttons injected by JS -->
+                </div>
+            </section>
+
+            <section class="flex flex-col gap-3" id="reason-section">
+                <div class="flex justify-between items-center">
+                    <span class="text-[12px] uppercase tracking-widest text-[#636E72] font-bold block">2. 寫下原因</span>
+                    <span id="char-count" class="text-[10px] font-mono text-[#636E72]">0 / 150</span>
+                </div>
+                <textarea
+                    id="reason-input"
+                    placeholder="今天發生了什麼特別的事嗎？"
+                    maxlength="150"
+                    class="w-full h-32 border border-[#DFE6E9] rounded-lg p-3 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-[#4A90E2] focus:border-[#4A90E2]"
+                ></textarea>
+            </section>
+
+            <button 
+                id="submit-btn"
+                class="w-full py-6 bg-[#4A90E2] hover:bg-[#357ABD] text-white font-bold rounded-lg transition-all disabled:opacity-50 mt-auto"
+            >
+                提交數據至本地儲存
+            </button>
+        </aside>
+
+        <!-- Main Content - History & Filter -->
+        <main class="flex-1 p-8 overflow-y-auto bg-[#F5F7FA]">
+            <div class="max-w-4xl mx-auto flex flex-col gap-6">
+                <!-- Filters -->
+                <div class="flex gap-2 items-center">
+                    <button onclick="setFilter('all')" id="filter-all" class="filter-btn h-8 px-4 text-[11px] font-bold rounded-full border border-[#4A90E2] bg-[#4A90E2] text-white transition-all">
+                        全部
+                    </button>
+                    <button onclick="setFilter('active')" id="filter-active" class="filter-btn h-8 px-4 text-[11px] font-bold rounded-full border border-[#DFE6E9] text-[#636E72] hover:bg-emerald-50 transition-all">
+                        只看 active
+                    </button>
+                    <button onclick="setFilter('done')" id="filter-done" class="filter-btn h-8 px-4 text-[11px] font-bold rounded-full border border-[#DFE6E9] text-[#636E72] hover:bg-slate-50 transition-all">
+                        只看 done
+                    </button>
+                </div>
+
+                <!-- History Table -->
+                <div class="bg-white border border-[#DFE6E9] rounded-xl overflow-hidden flex flex-col">
+                    <div class="bg-[#FAFBFC] border-b border-[#DFE6E9] px-5 py-3 grid grid-cols-[140px_100px_1fr_160px] text-[12px] font-bold text-[#636E72] uppercase tracking-wider">
+                        <div>時間</div>
+                        <div>心情</div>
+                        <div>原因</div>
+                        <div class="text-right">狀態操作</div>
+                    </div>
+                    <div id="records-list" class="overflow-y-auto max-h-[600px]">
+                        <!-- Records injected by JS -->
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const STORAGE_KEY = "records";
+        const MOODS = [
+            { label: "開心", value: "happy", icon: "smile", color: "bg-yellow-400", text: "text-yellow-700" },
+            { label: "平靜", value: "calm", icon: "meh", color: "bg-blue-400", text: "text-blue-700" },
+            { label: "難過", value: "sad", icon: "frown", color: "bg-indigo-400", text: "text-indigo-700" },
+            { label: "興奮", value: "excited", icon: "zap", color: "bg-orange-400", text: "text-orange-700" },
+            { label: "有愛", value: "loved", icon: "heart", color: "bg-pink-400", text: "text-pink-700" },
+            { label: "沮喪", value: "frustrated", icon: "cloud-rain", color: "bg-slate-400", text: "text-slate-700" },
+        ];
+
+        let selectedMood = "";
+        let currentFilter = "all";
+
+        // --- Core Functions (Required) ---
+
+        function loadData() {
+            const data = localStorage.getItem(STORAGE_KEY);
+            return data ? JSON.parse(data) : [];
+        }
+
+        function saveData(newRecord) {
+            const records = loadData();
+            records.push(newRecord);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+        }
+
+        function renderList() {
+            const listContainer = document.getElementById('records-list');
+            const records = loadData();
+            
+            // Apply sorting: active first, then latest time
+            const sortedRecords = records.sort((a, b) => {
+                if (a.status !== b.status) {
+                    return a.status === 'active' ? -1 : 1;
+                }
+                return new Date(b.createdAt) - new Date(a.createdAt);
+            });
+
+            // Filter
+            const filteredRecords = sortedRecords.filter(r => 
+                currentFilter === 'all' ? true : r.status === currentFilter
+            );
+
+            if (filteredRecords.length === 0) {
+                listContainer.innerHTML = `<div class="p-10 text-center text-[#636E72] text-sm italic">暫無符合條件的記錄</div>`;
+                return;
+            }
+
+            listContainer.innerHTML = filteredRecords.map(record => {
+                const moodInfo = MOODS.find(m => m.value === record.mood) || MOODS[0];
+                const isDone = record.status === 'done';
+                const dateStr = new Date(record.createdAt).toLocaleString('zh-TW', {
+                    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
+                });
+
+                return `
+                    <div class="px-5 py-4 border-b border-[#DFE6E9] last:border-0 grid grid-cols-[140px_100px_1fr_160px] items-center text-[14px] transition-all ${isDone ? 'bg-slate-50 opacity-60' : 'bg-white'}">
+                        <div class="font-mono text-[12px] ${isDone ? 'text-slate-400 line-through' : 'text-[#636E72]'}">${dateStr}</div>
+                        <div class="${isDone ? 'grayscale' : ''}">
+                            <span class="px-2 py-1 rounded text-[12px] font-bold ${moodInfo.color} bg-opacity-20 ${moodInfo.text}">
+                                ${moodInfo.label}
+                            </span>
+                        </div>
+                        <div class="truncate pr-4 ${isDone ? 'text-slate-400 line-through' : 'text-[#2D3436]'}">
+                            ${record.reason || "—"}
+                        </div>
+                        <div class="text-right">
+                            <button onclick="toggleStatus('${record.id}')" class="h-8 px-2 text-[11px] font-bold rounded hover:bg-slate-100 flex items-center justify-center ml-auto gap-1 ${isDone ? 'text-slate-500' : 'text-[#4A90E2]'}">
+                                ${isDone ? '<i data-lucide="refresh-ccw" class="w-3 h-3"></i> 重啟' : '<i data-lucide="check-circle-2" class="w-3 h-3"></i> 標記為已完成'}
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            lucide.createIcons();
+            updateFilterCounts();
+            checkDailyLimit();
+        }
+
+        // --- UI & Logic Helpers ---
+
+        function initMoodGrid() {
+            const grid = document.getElementById('mood-grid');
+            grid.innerHTML = MOODS.map(mood => `
+                <button type="button" onclick="selectMood('${mood.value}')" id="mood-btn-${mood.value}"
+                    class="mood-btn flex flex-col items-center justify-center p-3 rounded-lg border border-[#DFE6E9] transition-all bg-white hover:bg-slate-50 text-[#2D3436]">
+                    <i data-lucide="${mood.icon}" class="w-5 h-5 mb-1 ${mood.text}"></i>
+                    <span class="text-[11px] font-medium">${mood.label}</span>
+                </button>
+            `).join('');
+            lucide.createIcons();
+        }
+
+        function selectMood(val) {
+            selectedMood = val;
+            document.querySelectorAll('.mood-btn').forEach(btn => {
+                btn.classList.remove('bg-[#4A90E2]', 'border-[#4A90E2]', 'text-white');
+                btn.classList.add('bg-white', 'border-[#DFE6E9]', 'text-[#2D3436]');
+                // Reset icon color for others
+                const moodVal = btn.id.replace('mood-btn-', '');
+                const m = MOODS.find(x => x.value === moodVal);
+                const icon = btn.querySelector('i');
+                icon.className = `w-5 h-5 mb-1 ${m.text}`;
+            });
+
+            const activeBtn = document.getElementById(`mood-btn-${val}`);
+            activeBtn.classList.remove('bg-white', 'border-[#DFE6E9]', 'text-[#2D3436]');
+            activeBtn.classList.add('bg-[#4A90E2]', 'border-[#4A90E2]', 'text-white');
+            activeBtn.querySelector('i').className = "w-5 h-5 mb-1 text-white";
+        }
+
+        function setFilter(f) {
+            currentFilter = f;
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('bg-[#4A90E2]', 'border-[#4A90E2]', 'bg-emerald-500', 'border-emerald-500', 'bg-slate-500', 'border-slate-500', 'text-white');
+                btn.classList.add('border-[#DFE6E9]', 'text-[#636E72]');
+            });
+
+            const activeBtn = document.getElementById(`filter-${f}`);
+            activeBtn.classList.remove('border-[#DFE6E9]', 'text-[#636E72]');
+            
+            if(f === 'all') activeBtn.classList.add('bg-[#4A90E2]', 'border-[#4A90E2]', 'text-white');
+            if(f === 'active') activeBtn.classList.add('bg-emerald-500', 'border-emerald-500', 'text-white');
+            if(f === 'done') activeBtn.classList.add('bg-slate-500', 'border-slate-500', 'text-white');
+            
+            renderList();
+        }
+
+        function updateFilterCounts() {
+            const records = loadData();
+            document.getElementById('filter-all').innerText = `全部 (${records.length})`;
+            document.getElementById('filter-active').innerText = `只看 active (${records.filter(r => r.status === 'active').length})`;
+            document.getElementById('filter-done').innerText = `只看 done (${records.filter(r => r.status === 'done').length})`;
+        }
+
+        function toggleStatus(id) {
+            const records = loadData();
+            const record = records.find(r => r.id === id);
+            if (record) {
+                record.status = record.status === 'active' ? 'done' : 'active';
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+                renderList();
+            }
+        }
+
+        function checkDailyLimit() {
+            const records = loadData();
+            const today = new Date().toLocaleDateString();
+            const hasToday = records.some(r => new Date(r.createdAt).toLocaleDateString() === today);
+            
+            const warning = document.getElementById('limit-warning');
+            const submitBtn = document.getElementById('submit-btn');
+            const moodSection = document.getElementById('mood-section');
+            const reasonSection = document.getElementById('reason-section');
+
+            if (hasToday) {
+                warning.classList.remove('hidden');
+                submitBtn.disabled = true;
+                submitBtn.innerText = "今日已打卡";
+                moodSection.classList.add('opacity-50', 'pointer-events-none');
+                reasonSection.classList.add('opacity-50', 'pointer-events-none');
+            } else {
+                warning.classList.add('hidden');
+                submitBtn.innerText = "提交數據至本地儲存";
+                moodSection.classList.remove('opacity-50', 'pointer-events-none');
+                reasonSection.classList.remove('opacity-50', 'pointer-events-none');
+            }
+        }
+
+        // --- Event Listeners ---
+
+        document.getElementById('reason-input').addEventListener('input', (e) => {
+            const len = e.target.value.length;
+            const counter = document.getElementById('char-count');
+            counter.innerText = `${len} / 150`;
+            if (len >= 150) counter.classList.add('text-red-500', 'font-bold');
+            else counter.classList.remove('text-red-500', 'font-bold');
+        });
+
+        document.getElementById('submit-btn').addEventListener('click', () => {
+            const reason = document.getElementById('reason-input').value;
+            if (!selectedMood) return alert("請選擇一個心情");
+            
+            const newRecord = {
+                id: Date.now() + "_" + Math.random().toString(36).slice(2,6),
+                createdAt: new Date().toISOString(),
+                mood: selectedMood,
+                reason: reason,
+                status: "active"
+            };
+
+            saveData(newRecord);
+            
+            // Clean up
+            document.getElementById('reason-input').value = "";
+            document.getElementById('char-count').innerText = "0 / 150";
+            selectedMood = "";
+            document.querySelectorAll('.mood-btn').forEach(btn => {
+                btn.classList.remove('bg-[#4A90E2]', 'border-[#4A90E2]', 'text-white');
+                btn.classList.add('bg-white', 'border-[#DFE6E9]', 'text-[#2D3436]');
+                // Reset icon colors
+                const moodVal = btn.id.replace('mood-btn-', '');
+                const m = MOODS.find(x => x.value === moodVal);
+                btn.querySelector('i').className = `w-5 h-5 mb-1 ${m.text}`;
+            });
+
+            renderList();
+        });
+
+        // Initialize
+        initMoodGrid();
+        renderList();
+
+    </script>
+</body>
+</html>

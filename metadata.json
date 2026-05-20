@@ -1,0 +1,6 @@
+{
+  "name": "Daily Mood Check-in",
+  "description": "A simple app to track your daily mood and reasons with persistent storage using Firebase.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
