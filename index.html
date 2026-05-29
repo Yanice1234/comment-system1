@@ -15,7 +15,6 @@
 </head>
 <body class="min-h-screen flex flex-col">
 
-    <!-- Header -->
     <header class="h-[60px] bg-white border-b border-[#DFE6E9] flex items-center justify-between px-6 shrink-0 z-10">
         <div class="text-xl font-extrabold text-[#4A90E2] tracking-tighter">MOODFLOW PRO</div>
         <div class="flex items-center gap-4 text-[13px] text-[#636E72]">
@@ -24,12 +23,17 @@
                 <span class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded text-[11px] font-mono">LOCAL STORAGE</span>
             </div>
             <div class="h-4 w-[1px] bg-[#DFE6E9]"></div>
+            
+            <button onclick="handleAISummary()" id="aiBtn" class="flex items-center gap-2 bg-zinc-800 text-zinc-100 px-4 py-2 rounded-full font-medium hover:bg-zinc-700 transition-colors active:scale-95 border border-zinc-700 disabled:opacity-50">
+                <i data-lucide="sparkles" class="w-4 h-4"></i>
+                <span id="aiBtnText">AI 摘要</span>
+            </button>
+
             <span id="user-email">1164015-4</span>
         </div>
     </header>
 
     <div class="flex flex-1 overflow-hidden">
-        <!-- Sidebar - Input Form -->
         <aside class="w-[320px] bg-white border-r border-[#DFE6E9] p-6 flex flex-col gap-6 overflow-y-auto">
             <div id="limit-warning" class="hidden bg-amber-50 border border-amber-200 rounded-lg p-3 text-[12px] text-amber-700 leading-relaxed">
                 ✨ <b>今天的心情已安放。</b><br/>
@@ -39,8 +43,7 @@
             <section id="mood-section">
                 <span class="text-[12px] uppercase tracking-widest text-[#636E72] font-bold mb-4 block">1. 選擇你的心情</span>
                 <div class="grid grid-cols-3 gap-2" id="mood-grid">
-                    <!-- Mood buttons injected by JS -->
-                </div>
+                    </div>
             </section>
 
             <section class="flex flex-col gap-3" id="reason-section">
@@ -64,10 +67,8 @@
             </button>
         </aside>
 
-        <!-- Main Content - History & Filter -->
         <main class="flex-1 p-8 overflow-y-auto bg-[#F5F7FA]">
             <div class="max-w-4xl mx-auto flex flex-col gap-6">
-                <!-- Filters -->
                 <div class="flex gap-2 items-center">
                     <button onclick="setFilter('all')" id="filter-all" class="filter-btn h-8 px-4 text-[11px] font-bold rounded-full border border-[#4A90E2] bg-[#4A90E2] text-white transition-all">
                         全部
@@ -80,7 +81,6 @@
                     </button>
                 </div>
 
-                <!-- History Table -->
                 <div class="bg-white border border-[#DFE6E9] rounded-xl overflow-hidden flex flex-col">
                     <div class="bg-[#FAFBFC] border-b border-[#DFE6E9] px-5 py-3 grid grid-cols-[140px_100px_1fr_160px] text-[12px] font-bold text-[#636E72] uppercase tracking-wider">
                         <div>時間</div>
@@ -89,14 +89,14 @@
                         <div class="text-right">狀態操作</div>
                     </div>
                     <div id="records-list" class="overflow-y-auto max-h-[600px]">
-                        <!-- Records injected by JS -->
-                    </div>
+                        </div>
                 </div>
             </div>
         </main>
     </div>
 
     <script>
+        const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzSBuT6A3r3q2NCFRDYWV3LYDsWuYMigVmhED5C6RoTe40veYjPV2WiaSH0MN3xyvxm_g/exec";
         const STORAGE_KEY = "records";
         const MOODS = [
             { label: "開心", value: "happy", icon: "smile", color: "bg-yellow-400", text: "text-yellow-700" },
@@ -110,22 +110,60 @@
         let selectedMood = "";
         let currentFilter = "all";
 
-        // --- Core Functions (Required) ---
+        // --- 遠端同步 Helper ---
+        async function syncToSheet(payload) {
+            if (APPS_SCRIPT_URL.includes("PASTE")) return;
+            try {
+                await fetch(APPS_SCRIPT_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "text/plain" },
+                    body: JSON.stringify(payload)
+                });
+            } catch (e) { console.warn(e); }
+        }
 
-        function loadData() {
-            const data = localStorage.getItem(STORAGE_KEY);
+        // --- 要做的事 1：用 GET 重新實作 fetchRecordsFromSheet 與 normalizeRecord ---
+        function normalizeRecord(record) {
+            return {
+                id: record.id || record.ID || "",
+                createdAt: record.createdAt || record.CreatedAt || "",
+                // 後端 Sheet contract 欄位 Content 對應前端本機結構的原因 reason
+                reason: record.content || record.Content || record.reason || record.Reason || "",
+                // 後端 Sheet contract 欄位 Category 對應前端本機結構的心情 mood
+                mood: record.category || record.Category || record.mood || record.Mood || "happy",
+                likes: Number(record.likes !== undefined ? record.likes : (record.Likes || 0)),
+                status: record.status || record.Status || "active"
+            };
+        }
+
+        async function fetchRecordsFromSheet() {
+            if (APPS_SCRIPT_URL.includes("PASTE")) return null;
+            try {
+                const res = await fetch(APPS_SCRIPT_URL);
+                const data = await res.json();
+                return Array.isArray(data.records) ? data.records.map(normalizeRecord) : null;
+            } catch (e) {
+                console.warn("從 Sheet 讀取失敗", e);
+                return null;
+            }
+        }
+
+        // --- 要做的事 2：將 loadData 改為從 Sheet 讀回，localStorage 做 fallback ---
+        async function loadData() {
+            const remote = await fetchRecordsFromSheet();
+            if (remote) {
+                localStorage.setItem("records", JSON.stringify(remote));
+                return remote;
+            }
+            const data = localStorage.getItem("records");
             return data ? JSON.parse(data) : [];
         }
 
-        function saveData(newRecord) {
-            const records = loadData();
-            records.push(newRecord);
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-        }
+        // --- Core Functions (已被改為 async 且優化即時渲染) ---
 
-        function renderList() {
+        async function renderList(recordsOverride) {
             const listContainer = document.getElementById('records-list');
-            const records = loadData();
+            const records = recordsOverride || await loadData();
             
             // Apply sorting: active first, then latest time
             const sortedRecords = records.sort((a, b) => {
@@ -142,6 +180,8 @@
 
             if (filteredRecords.length === 0) {
                 listContainer.innerHTML = `<div class="p-10 text-center text-[#636E72] text-sm italic">暫無符合條件的記錄</div>`;
+                updateFilterCounts(records);
+                checkDailyLimit(records);
                 return;
             }
 
@@ -173,8 +213,44 @@
             }).join('');
             
             lucide.createIcons();
-            updateFilterCounts();
-            checkDailyLimit();
+            updateFilterCounts(records);
+            checkDailyLimit(records);
+        }
+
+        async function saveData(newRecord) {
+            const records = await loadData();
+            records.push(newRecord);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+            
+            // 轉換為後端合約格式同步 (Category=心情, Content=原因)
+            syncToSheet({ 
+                action: "create", 
+                record: {
+                    id: newRecord.id,
+                    createdAt: newRecord.createdAt,
+                    category: newRecord.mood,
+                    content: newRecord.reason,
+                    status: newRecord.status
+                } 
+            });
+            await renderList(records);
+        }
+
+        // 題目要求的 handleLike 更新邏輯（在此 app 中實作於 toggleStatus 機制中）
+        async function toggleStatus(id) {
+            const records = await loadData();
+            const record = records.find(r => r.id === id);
+            if (record) {
+                record.status = record.status === 'active' ? 'done' : 'active';
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+                
+                syncToSheet({ 
+                    action: "update", 
+                    id: id, 
+                    changes: { status: record.status } 
+                });
+                await renderList(records);
+            }
         }
 
         // --- UI & Logic Helpers ---
@@ -196,7 +272,6 @@
             document.querySelectorAll('.mood-btn').forEach(btn => {
                 btn.classList.remove('bg-[#4A90E2]', 'border-[#4A90E2]', 'text-white');
                 btn.classList.add('bg-white', 'border-[#DFE6E9]', 'text-[#2D3436]');
-                // Reset icon color for others
                 const moodVal = btn.id.replace('mood-btn-', '');
                 const m = MOODS.find(x => x.value === moodVal);
                 const icon = btn.querySelector('i');
@@ -209,7 +284,7 @@
             activeBtn.querySelector('i').className = "w-5 h-5 mb-1 text-white";
         }
 
-        function setFilter(f) {
+        async function setFilter(f) {
             currentFilter = f;
             document.querySelectorAll('.filter-btn').forEach(btn => {
                 btn.classList.remove('bg-[#4A90E2]', 'border-[#4A90E2]', 'bg-emerald-500', 'border-emerald-500', 'bg-slate-500', 'border-slate-500', 'text-white');
@@ -223,28 +298,18 @@
             if(f === 'active') activeBtn.classList.add('bg-emerald-500', 'border-emerald-500', 'text-white');
             if(f === 'done') activeBtn.classList.add('bg-slate-500', 'border-slate-500', 'text-white');
             
-            renderList();
+            await renderList();
         }
 
-        function updateFilterCounts() {
-            const records = loadData();
+        function updateFilterCounts(recordsFallback) {
+            const records = recordsFallback || [];
             document.getElementById('filter-all').innerText = `全部 (${records.length})`;
             document.getElementById('filter-active').innerText = `只看 active (${records.filter(r => r.status === 'active').length})`;
             document.getElementById('filter-done').innerText = `只看 done (${records.filter(r => r.status === 'done').length})`;
         }
 
-        function toggleStatus(id) {
-            const records = loadData();
-            const record = records.find(r => r.id === id);
-            if (record) {
-                record.status = record.status === 'active' ? 'done' : 'active';
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-                renderList();
-            }
-        }
-
-        function checkDailyLimit() {
-            const records = loadData();
+        function checkDailyLimit(recordsFallback) {
+            const records = recordsFallback || [];
             const today = new Date().toLocaleDateString();
             const hasToday = records.some(r => new Date(r.createdAt).toLocaleDateString() === today);
             
@@ -261,9 +326,44 @@
                 reasonSection.classList.add('opacity-50', 'pointer-events-none');
             } else {
                 warning.classList.add('hidden');
+                submitBtn.disabled = false;
                 submitBtn.innerText = "提交數據至本地儲存";
                 moodSection.classList.remove('opacity-50', 'pointer-events-none');
                 reasonSection.classList.remove('opacity-50', 'pointer-events-none');
+            }
+        }
+
+        // --- 要做的事 4-(b) & 4-(c)：加 AI 摘要 helper 與 handler function ---
+        async function askAI(userPrompt) {
+            const res = await fetch(APPS_SCRIPT_URL, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain" },
+                body: JSON.stringify({ action: "askAI", prompt: userPrompt })
+            });
+            const data = await res.json();
+            return data.result || data.error || "AI 冇回應";
+        }
+
+        async function handleAISummary() {
+            const btn = document.getElementById('aiBtn');
+            const text = document.getElementById('aiBtnText');
+            btn.disabled = true;
+            text.textContent = '思考中...';
+            try {
+                const records = await loadData();
+                if (records.length === 0) { alert('未有吐槽資料可以摘要'); return; }
+                const summaryInput = records.slice(0, 30).map(r => {
+                    const moodInfo = MOODS.find(m => m.value === r.mood) || { label: r.mood };
+                    return `[${moodInfo.label}] ${r.reason}`;
+                }).join('\n');
+                const prompt = '以下是班級吐槽牆嘅留言。請用繁體中文，用 3-5 句概括同學最關心嘅問題、情緒同有冇明顯 patterns:\n\n' + summaryInput;
+                const result = await askAI(prompt);
+                alert(result);
+            } catch (e) {
+                alert('AI 出錯：' + e.message);
+            } finally {
+                btn.disabled = false;
+                text.textContent = 'AI 摘要';
             }
         }
 
@@ -277,7 +377,7 @@
             else counter.classList.remove('text-red-500', 'font-bold');
         });
 
-        document.getElementById('submit-btn').addEventListener('click', () => {
+        document.getElementById('submit-btn').addEventListener('click', async () => {
             const reason = document.getElementById('reason-input').value;
             if (!selectedMood) return alert("請選擇一個心情");
             
@@ -289,7 +389,7 @@
                 status: "active"
             };
 
-            saveData(newRecord);
+            await saveData(newRecord);
             
             // Clean up
             document.getElementById('reason-input').value = "";
@@ -298,39 +398,19 @@
             document.querySelectorAll('.mood-btn').forEach(btn => {
                 btn.classList.remove('bg-[#4A90E2]', 'border-[#4A90E2]', 'text-white');
                 btn.classList.add('bg-white', 'border-[#DFE6E9]', 'text-[#2D3436]');
-                // Reset icon colors
                 const moodVal = btn.id.replace('mood-btn-', '');
                 const m = MOODS.find(x => x.value === moodVal);
                 btn.querySelector('i').className = `w-5 h-5 mb-1 ${m.text}`;
             });
-
-            renderList();
         });
 
-        // Initialize
-        initMoodGrid();
-        renderList();
+        // --- 要做的事 3：簡化 window.onload ---
+        window.onload = async () => {
+            initMoodGrid();
+            await renderList();
+            lucide.createIcons();
+        };
 
     </script>
 </body>
 </html>
-<script> 
-    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzSBuT6A3r3q2NCFRDYWV3LYDsWuYMigVmhED5C6RoTe40veYjPV2WiaSH0MN3xyvxm_g/exec";
-
-2. 加上 helper：
-   async function syncToSheet(payload) {
-     if (APPS_SCRIPT_URL.includes("PASTE")) return;
-     try {
-       await fetch(APPS_SCRIPT_URL, {
-         method: "POST",
-         headers: { "Content-Type": "text/plain" },
-         body: JSON.stringify(payload)
-       });
-     } catch (e) { console.warn(e); }
-   }
-
-3. 在 saveData(newRecord) 寫入 localStorage 之後加上：
-   syncToSheet({ action: "create", record: newRecord });
-
-4. 如果有 function 修改現有 record（例：like / status toggle），在改完 localStorage 之後加上：
-   syncToSheet({ action: "update", id: 該record.id, changes: { 改動的欄位: 新值 } });
